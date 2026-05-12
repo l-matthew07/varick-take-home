@@ -63,8 +63,7 @@ def get_current_user(
 
 def require_role(role: str) -> Callable[[User], User]:
     def dependency(current_user: Annotated[User, Depends(get_current_user)]) -> User:
-        current_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-        if current_role != role:
+        if current_user.role.value != role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",

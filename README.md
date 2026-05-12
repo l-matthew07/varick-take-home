@@ -19,7 +19,7 @@ The backend will wait for PostgreSQL, run the seed script, and start. The fronte
 
 **Frontend:** Next.js 14 App Router + TypeScript. Auth state lives in a context provider, all API calls go through a single fetch wrapper that handles token attachment and 401 redirects.
 
-**Routing engine:** Lives in `backend/app/services/routing.py`. Evaluates rules in `priority_order` ascending, first match wins. Supports `equals`, `contains`, and `in` operators, plus compound conditions via optional secondary condition fields. The spec's rule #6 "(no match — default)" is a hardcoded fallback in `routing.py`, it fires when no seeded rule matches and routes to Account Management at P3.
+**Routing engine:** Lives in `backend/app/services/routing.py`. Evaluates rules in `priority_order` ascending, first match wins. Supports `equals`, `contains`, and `in` operators, plus compound conditions via a JSON `conditions` array on each rule. Rule #6 is the "Default Catch-All" seeded as a real DB row with empty conditions (which match vacuously), routing to Account Management at P3. A hardcoded code-level fallback exists as a safety net if the DB row is ever deleted.
 
 **SLA status** is computed at read time on every ticket response and is never stored. It's set to `on_track` if assigned, `breached` if past deadline and unassigned, `at_risk` if within 20% of the window.
 

@@ -89,6 +89,13 @@ def seed_routing_rules(session: Session) -> None:
                 target_team="Account Management",
                 priority_order=5,
             ),
+            RoutingRule(
+                name="Default Catch-All",
+                conditions=[],
+                target_team="Account Management",
+                auto_priority=TicketPriority.P3,
+                priority_order=6,
+            ),
         ]
     )
 

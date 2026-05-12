@@ -65,6 +65,13 @@ def seed_routing_rules(session):
             target_team="Account Management",
             priority_order=5,
         ),
+        RoutingRule(
+            name="Default Catch-All",
+            conditions=[],
+            target_team="Account Management",
+            auto_priority=TicketPriority.P3,
+            priority_order=6,
+        ),
     ]
     session.add_all(rules)
     session.commit()
@@ -220,12 +227,12 @@ def test_classification_and_team_assignment_history_entries_are_created(db_sessi
     assert actions.index("classified") < actions.index("assigned")
 
 
-def test_sla_status_assigned_agent_past_deadline_is_breached():
+def test_sla_status_assigned_agent_past_deadline_is_on_track():
     ticket = make_ticket(TicketCategory.ENGINEERING, TicketPriority.P1)
     ticket.assigned_agent = "agent@example.com"
     ticket.sla_deadline = datetime.now(timezone.utc) - timedelta(hours=1)
 
-    assert ticket_sla_status(ticket) == "breached"
+    assert ticket_sla_status(ticket) == "on_track"
 
 
 def test_sla_status_past_deadline_is_breached():

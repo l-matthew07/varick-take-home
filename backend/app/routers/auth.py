@@ -42,17 +42,15 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)) -> TokenResp
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    role = user.role.value if hasattr(user.role, "value") else str(user.role)
-    access_token = create_access_token({"sub": user.email, "role": role})
-    return TokenResponse(access_token=access_token, token_type="bearer", role=role)
+    access_token = create_access_token({"sub": user.email, "role": user.role.value})
+    return TokenResponse(access_token=access_token, token_type="bearer", role=user.role.value)
 
 
 @router.get("/me", response_model=CurrentUserResponse)
 def me(current_user: Annotated[User, Depends(get_current_user)]) -> CurrentUserResponse:
-    role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     return CurrentUserResponse(
         id=current_user.id,
         email=current_user.email,
-        role=role,
+        role=current_user.role.value,
         created_at=current_user.created_at,
     )

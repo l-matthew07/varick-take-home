@@ -173,3 +173,7 @@ export async function getMetrics(): Promise<Metrics> {
 export async function getSLABreaches(): Promise<SLABreachTicket[]> {
   return authFetch<SLABreachTicket[]>("/tickets/sla-breaches");
 }
+
+export async function getTeams(): Promise<string[]> {
+  return authFetch<string[]>("/teams");
+}

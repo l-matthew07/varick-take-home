@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { getTickets } from "@/lib/api";
+import { getTeams, getTickets } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate, priorityBadge, slaIndicator } from "@/lib/ticketFormat";
 import type { Ticket, TicketPriority, TicketStatus } from "@/types";
@@ -12,14 +12,22 @@ type StatusFilter = "all" | TicketStatus;
 type PriorityFilter = "all" | TicketPriority;
 
 const PAGE_SIZE = 20;
-const SUPPORT_TEAMS = ["Account Management", "Billing", "Engineering", "Security"];
+const TICKET_CATEGORIES = [
+  "billing",
+  "engineering",
+  "account_management",
+  "security",
+  "general",
+];
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [teams, setTeams] = useState<string[]>([]);
   const [status, setStatus] = useState<StatusFilter>("all");
   const [priority, setPriority] = useState<PriorityFilter>("all");
+  const [category, setCategory] = useState("all");
   const [team, setTeam] = useState("all");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
@@ -36,12 +44,27 @@ export default function DashboardPage() {
       return;
     }
 
+    getTeams()
+      .then(setTeams)
+      .catch((error) => {
+        if (error instanceof Error && error.message !== "Unauthorized") {
+          console.error(error);
+        }
+      });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
     let active = true;
     setLoading(true);
 
     getTickets({
       status: status === "all" ? undefined : status,
       priority: priority === "all" ? undefined : priority,
+      category: category === "all" ? undefined : category,
       assigned_team: team === "all" ? undefined : team,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
@@ -66,7 +89,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [page, priority, status, team, user]);
+  }, [category, page, priority, status, team, user]);
 
   if (authLoading || (!user && loading)) {
     return <main style={{ padding: "32px" }}>Loading...</main>;
@@ -115,6 +138,22 @@ export default function DashboardPage() {
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          Category
+          <select
+            onChange={(event) => { setCategory(event.target.value); setPage(0); }}
+            style={{ padding: "8px 10px" }}
+            value={category}
+          >
+            <option value="all">all</option>
+            {TICKET_CATEGORIES.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           Team
           <select
             onChange={(event) => { setTeam(event.target.value); setPage(0); }}
@@ -122,7 +161,7 @@ export default function DashboardPage() {
             value={team}
           >
             <option value="all">all</option>
-            {SUPPORT_TEAMS.map((teamName) => (
+            {teams.map((teamName) => (
               <option key={teamName} value={teamName}>
                 {teamName}
               </option>

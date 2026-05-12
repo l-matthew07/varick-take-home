@@ -30,6 +30,8 @@ def route_ticket(db: Session, ticket: Ticket, changed_by: str = "routing_engine"
         target_team = matched_rule.target_team
         final_priority = matched_rule.auto_priority or ticket.priority
     else:
+        # Safety net: should not fire if the DB has the "Default Catch-All" row seeded
+        # (empty-condition rules match vacuously via all([]) == True).
         matched_rule_name = "Default Catch-All"
         target_team = DEFAULT_TEAM
         final_priority = DEFAULT_PRIORITY

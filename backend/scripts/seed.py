@@ -84,8 +84,13 @@ ROUTING_RULES = [
         "target_team": "Account Management",
         "priority_order": 5,
     },
-    # Rule 6 from the spec is "(no match — default)" — it is not a DB rule but the
-    # hardcoded fallback in routing.py that fires when no seeded rule matches.
+    {
+        "name": "Default Catch-All",
+        "conditions": [],
+        "target_team": "Account Management",
+        "auto_priority": TicketPriority.P3,
+        "priority_order": 6,
+    },
 ]
 
 

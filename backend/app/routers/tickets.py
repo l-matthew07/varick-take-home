@@ -21,15 +21,9 @@ from app.models.models import (
     User,
 )
 from app.services.routing import SLA_WINDOWS_MINUTES, route_ticket
+from app.services.tickets import allowed_transitions, is_valid_transition
 
 router = APIRouter(tags=["tickets"])
-
-STATUS_TRANSITIONS = {
-    TicketStatus.OPEN: [TicketStatus.IN_PROGRESS],
-    TicketStatus.IN_PROGRESS: [TicketStatus.RESOLVED],
-    TicketStatus.RESOLVED: [TicketStatus.CLOSED, TicketStatus.IN_PROGRESS],
-    TicketStatus.CLOSED: [],
-}
 
 
 class TicketCreate(BaseModel):
@@ -101,6 +95,9 @@ def utc_now() -> datetime:
 
 def ticket_sla_status(ticket: Ticket, now: datetime | None = None) -> str:
     if ticket.sla_deadline is None or ticket.status in {TicketStatus.RESOLVED, TicketStatus.CLOSED}:
+        return "on_track"
+
+    if ticket.assigned_agent is not None:
         return "on_track"
 
     current_time = now or utc_now()
@@ -331,8 +328,8 @@ def update_ticket(
 
     updates = payload.model_fields_set
     if "status" in updates and payload.status is not None and payload.status != ticket.status:
-        allowed = STATUS_TRANSITIONS[ticket.status]
-        if payload.status not in allowed:
+        if not is_valid_transition(ticket.status, payload.status):
+            allowed = allowed_transitions(ticket.status)
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={
