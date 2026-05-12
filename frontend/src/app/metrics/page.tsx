@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { getMetrics, getSLABreaches } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { Metrics, SLABreachTicket, TicketPriority } from "@/types";
+import type { Metrics, SLABreachTicket, TicketPriority, TicketStatus } from "@/types";
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) {
@@ -187,6 +188,34 @@ export default function MetricsPage() {
             </tbody>
           </table>
         </div>
+
+        <div>
+          <h2 style={{ fontSize: "20px" }}>Tickets by Status</h2>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ borderBottom: "1px solid #d9dde5", padding: "10px", textAlign: "left" }}>
+                  Status
+                </th>
+                <th style={{ borderBottom: "1px solid #d9dde5", padding: "10px", textAlign: "left" }}>
+                  Count
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {(["open", "in_progress", "resolved", "closed"] as TicketStatus[]).map((status) => (
+                <tr key={status}>
+                  <td style={{ borderBottom: "1px solid #eef0f4", padding: "10px" }}>
+                    {status}
+                  </td>
+                  <td style={{ borderBottom: "1px solid #eef0f4", padding: "10px" }}>
+                    {metrics.tickets_by_status[status]}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section style={{ marginTop: "28px" }}>
@@ -197,7 +226,13 @@ export default function MetricsPage() {
           <ul style={{ display: "flex", flexDirection: "column", gap: "10px", paddingLeft: "20px" }}>
             {breaches.map((ticket) => (
               <li key={ticket.id}>
-                <strong>{ticket.title}</strong> · {ticket.assigned_team ?? "Unassigned"} ·{" "}
+                <Link
+                  href={`/tickets/${ticket.id}`}
+                  style={{ color: "#1d4ed8", fontWeight: 700 }}
+                >
+                  {ticket.title}
+                </Link>{" "}
+                · {ticket.assigned_team ?? "Unassigned"} ·{" "}
                 {formatDuration(ticket.sla_elapsed_seconds)}
               </li>
             ))}

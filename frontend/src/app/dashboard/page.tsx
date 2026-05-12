@@ -1,70 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { getTickets } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatDate, priorityBadge, slaIndicator } from "@/lib/ticketFormat";
 import type { Ticket, TicketPriority, TicketStatus } from "@/types";
 
 type StatusFilter = "all" | TicketStatus;
 type PriorityFilter = "all" | TicketPriority;
 
-const priorityColors: Record<TicketPriority, string> = {
-  P1: "#b42318",
-  P2: "#c4320a",
-  P3: "#854d0e",
-  P4: "#374151",
-};
-
-const slaColors: Record<Ticket["sla_status"], string> = {
-  on_track: "#16a34a",
-  at_risk: "#ea580c",
-  breached: "#dc2626",
-};
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
-
-function priorityBadge(priority: TicketPriority) {
-  return (
-    <span
-      style={{
-        background: priorityColors[priority],
-        borderRadius: "9999px",
-        color: "#ffffff",
-        display: "inline-block",
-        fontSize: "12px",
-        fontWeight: 600,
-        padding: "2px 8px",
-      }}
-    >
-      {priority}
-    </span>
-  );
-}
-
-function slaIndicator(status: Ticket["sla_status"]) {
-  return (
-    <span style={{ alignItems: "center", display: "inline-flex", gap: "8px" }}>
-      <span
-        style={{
-          background: slaColors[status],
-          borderRadius: "9999px",
-          display: "inline-block",
-          height: "12px",
-          width: "12px",
-        }}
-      />
-      {status.replace("_", " ")}
-    </span>
-  );
-}
+const PAGE_SIZE = 20;
+const SUPPORT_TEAMS = ["Account Management", "Billing", "Engineering", "Security"];
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -73,6 +21,8 @@ export default function DashboardPage() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [priority, setPriority] = useState<PriorityFilter>("all");
   const [team, setTeam] = useState("all");
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -93,10 +43,13 @@ export default function DashboardPage() {
       status: status === "all" ? undefined : status,
       priority: priority === "all" ? undefined : priority,
       assigned_team: team === "all" ? undefined : team,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
     })
       .then((response) => {
         if (active) {
           setTickets(response.items);
+          setTotal(response.total);
         }
       })
       .catch((error) => {
@@ -113,15 +66,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [priority, status, team, user]);
-
-  const teams = useMemo(
-    () =>
-      Array.from(
-        new Set(tickets.map((ticket) => ticket.assigned_team).filter(Boolean) as string[]),
-      ).sort(),
-    [tickets],
-  );
+  }, [page, priority, status, team, user]);
 
   if (authLoading || (!user && loading)) {
     return <main style={{ padding: "32px" }}>Loading...</main>;
@@ -142,7 +87,7 @@ export default function DashboardPage() {
         <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           Status
           <select
-            onChange={(event) => setStatus(event.target.value as StatusFilter)}
+            onChange={(event) => { setStatus(event.target.value as StatusFilter); setPage(0); }}
             style={{ padding: "8px 10px" }}
             value={status}
           >
@@ -157,7 +102,7 @@ export default function DashboardPage() {
         <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           Priority
           <select
-            onChange={(event) => setPriority(event.target.value as PriorityFilter)}
+            onChange={(event) => { setPriority(event.target.value as PriorityFilter); setPage(0); }}
             style={{ padding: "8px 10px" }}
             value={priority}
           >
@@ -172,12 +117,12 @@ export default function DashboardPage() {
         <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           Team
           <select
-            onChange={(event) => setTeam(event.target.value)}
+            onChange={(event) => { setTeam(event.target.value); setPage(0); }}
             style={{ padding: "8px 10px", minWidth: "180px" }}
             value={team}
           >
             <option value="all">all</option>
-            {teams.map((teamName) => (
+            {SUPPORT_TEAMS.map((teamName) => (
               <option key={teamName} value={teamName}>
                 {teamName}
               </option>
@@ -242,7 +187,11 @@ export default function DashboardPage() {
                     {ticket.status}
                   </td>
                   <td style={{ borderBottom: "1px solid #eef0f4", padding: "12px" }}>
-                    {formatDate(ticket.created_at)}
+                    {formatDate(ticket.created_at, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
                   </td>
                   <td style={{ borderBottom: "1px solid #eef0f4", padding: "12px" }}>
                     {slaIndicator(ticket.sla_status)}
@@ -251,6 +200,30 @@ export default function DashboardPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {total > PAGE_SIZE && (
+        <div style={{ alignItems: "center", display: "flex", gap: "12px", marginTop: "16px" }}>
+          <button
+            disabled={page === 0}
+            onClick={() => setPage((p) => p - 1)}
+            style={{ padding: "6px 12px" }}
+            type="button"
+          >
+            Previous
+          </button>
+          <span style={{ fontSize: "14px" }}>
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+          </span>
+          <button
+            disabled={(page + 1) * PAGE_SIZE >= total}
+            onClick={() => setPage((p) => p + 1)}
+            style={{ padding: "6px 12px" }}
+            type="button"
+          >
+            Next
+          </button>
         </div>
       )}
     </main>

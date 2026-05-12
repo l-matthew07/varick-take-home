@@ -1,10 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { createTicket } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatDate } from "@/lib/ticketFormat";
 import type { TicketCreateResponse, TicketPriority } from "@/types";
 
 const initialForm = {
@@ -14,17 +16,6 @@ const initialForm = {
   category: "general",
   priority: "P3" as TicketPriority,
 };
-
-function formatDate(value: string | null): string {
-  if (!value) {
-    return "None";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
 
 export default function SubmitPage() {
   const router = useRouter();
@@ -171,6 +162,18 @@ export default function SubmitPage() {
             Routed to: {result.routed_to}, Priority: {result.final_priority}, SLA Deadline:{" "}
             {formatDate(result.sla_deadline)}, Rule matched: {result.rule_matched}
           </p>
+          <Link
+            href={`/tickets/${result.ticket.id}`}
+            style={{
+              color: "#1d4ed8",
+              display: "inline-block",
+              fontWeight: 600,
+              marginBottom: "12px",
+            }}
+          >
+            View created ticket
+          </Link>
+          <br />
           <button
             onClick={() => {
               setForm(initialForm);
