@@ -2,11 +2,11 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: support_tickets
-      POSTGRES_USER: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d support_tickets"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -14,10 +14,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@db:5432/support_tickets
+      DATABASE_URL: ${DATABASE_URL}
       SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
     depends_on:
       db:
         condition: service_healthy
@@ -25,9 +27,12 @@ services:
       - "8000:8000"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     depends_on:
       - backend
     ports:
