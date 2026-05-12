@@ -20,6 +20,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       SECRET_KEY: ${SECRET_KEY}
       ALGORITHM: ${ALGORITHM}
+      CORS_ORIGINS: ${CORS_ORIGINS}
     depends_on:
       db:
         condition: service_healthy

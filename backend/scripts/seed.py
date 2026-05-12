@@ -94,6 +94,88 @@ ROUTING_RULES = [
 ]
 
 
+TICKET_DESCRIPTIONS = {
+    "Production database down": (
+        "The primary RDS instance became unresponsive at 14:32 UTC. All write operations are "
+        "failing with connection timeout errors. Read replicas are still serving traffic but "
+        "the application is degraded. On-call engineer has been paged and is investigating."
+    ),
+    "Cannot process payments": (
+        "Payment processing has been completely unavailable since 09:45 UTC. Customers are "
+        "unable to complete checkout. The Stripe webhook is returning 503 errors. Revenue "
+        "impact is approximately $2,400/minute based on average transaction volume. Requires "
+        "immediate escalation to the payments infrastructure team."
+    ),
+    "Billing charge incorrect": (
+        "Customer reports being charged $299 instead of $29 on their monthly subscription "
+        "renewal on May 8th. Invoice #INV-20240508-4821. They have attached a screenshot of "
+        "their bank statement. Please review the billing event log and issue a corrected "
+        "invoice with a refund for the overcharge."
+    ),
+    "Refund not received": (
+        "Customer submitted a refund request on April 30th (ticket #REF-2240) and was told "
+        "to expect the refund within 5-7 business days. It is now 10 business days later and "
+        "the $149 refund has not appeared in their account. Customer has contacted their bank "
+        "who confirmed no pending credit. Please investigate the refund transaction status."
+    ),
+    "Suspicious login detected": (
+        "Automated security monitoring flagged a successful login from an IP in Romania "
+        "(185.220.101.47) at 03:12 UTC for account user@acmecorp.com. The account has never "
+        "previously logged in from outside the US. MFA was not triggered due to a remembered "
+        "device token from 30 days ago. The session performed several API key rotations "
+        "before being detected. Account has been temporarily suspended pending review."
+    ),
+    "Account locked out": (
+        "Customer is unable to log in to their account after changing their email address "
+        "yesterday. They are receiving an 'account not found' error when attempting to sign "
+        "in with the new email, and a 'password incorrect' error with the old email. "
+        "Verification email to the new address was never received. Account ID: USR-88124."
+    ),
+    "Password reset not working": (
+        "Multiple users on the acmecorp.com domain reported that password reset emails are "
+        "not being delivered. The reset flow completes without error on the frontend but the "
+        "email never arrives. Investigation found a misconfigured SPF record on the sending "
+        "domain that was causing messages to be rejected by recipient mail servers. Fixed by "
+        "updating the DNS record — affected users have been notified to retry."
+    ),
+    "API rate limit too low": (
+        "The /api/v2/events endpoint is rate-limited at 100 requests/minute per API key, "
+        "which is insufficient for our data pipeline. We're ingesting sensor data from 400 "
+        "devices that each emit an event every 15 seconds, requiring approximately 1,600 "
+        "requests/minute. We've implemented client-side batching but still hit the limit "
+        "during peak hours. Requesting either a higher limit or a bulk-ingest endpoint."
+    ),
+    "Unable to update billing address": (
+        "Customer attempted to update their billing address through the account settings "
+        "page. The form submits successfully and shows a confirmation message, but the "
+        "address reverts to the old value on page refresh. Affects only billing address — "
+        "shipping address updates correctly. Customer needs the correct address on file "
+        "before their invoice generates on the 15th."
+    ),
+    "New user onboarding issue": (
+        "A batch of 12 new users invited via the admin console on May 10th never received "
+        "their invitation emails. The admin dashboard shows the invitations as 'sent' but "
+        "users confirmed no email was received (checked spam folders). The company starts "
+        "their onboarding training tomorrow morning and needs all accounts active. "
+        "Affected accounts: invited via admin@techstart.io, organization ID ORG-5521."
+    ),
+    "General inquiry about pricing": (
+        "Prospective customer asking about pricing for a 200-seat enterprise plan. They are "
+        "currently evaluating us against two competitors and have a budget decision deadline "
+        "of May 20th. They specifically want to know if annual billing offers a discount, "
+        "whether SSO and audit logs are included at the enterprise tier, and if a private "
+        "cloud deployment option is available. Routed to Account Management for follow-up."
+    ),
+    "SSL certificate expiring": (
+        "Automated certificate monitoring detected that the wildcard SSL certificate for "
+        "*.api.example.com expires in 18 days (June 1st). The certificate is managed outside "
+        "of Let's Encrypt and requires manual renewal through the CA portal. Last year's "
+        "renewal was missed and caused a 4-hour outage. Assigned to the security team to "
+        "initiate renewal and update the certificate rotation runbook."
+    ),
+}
+
+
 def ticket_seed_data(now: datetime) -> list[dict[str, Any]]:
     return [
         {
@@ -255,7 +337,7 @@ def seed_tickets(session: Session, now: datetime) -> None:
 
         ticket = Ticket(
             title=ticket_data["title"],
-            description=f"Seed ticket: {ticket_data['title']}",
+            description=TICKET_DESCRIPTIONS[ticket_data["title"]],
             channel=ticket_data["channel"],
             status=ticket_data["status"],
             priority=ticket_data["priority"],
