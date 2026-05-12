@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.utils import ensure_aware, enum_value
 from app.models.models import (
     Ticket,
     TicketCategory,
@@ -19,7 +20,7 @@ from app.models.models import (
     TicketStatus,
     User,
 )
-from app.services.routing import SLA_WINDOWS_MINUTES, enum_value, route_ticket
+from app.services.routing import SLA_WINDOWS_MINUTES, route_ticket
 
 router = APIRouter(tags=["tickets"])
 
@@ -98,14 +99,8 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def ensure_aware(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value
-
-
 def ticket_sla_status(ticket: Ticket, now: datetime | None = None) -> str:
-    if ticket.assigned_agent is not None or ticket.sla_deadline is None:
+    if ticket.sla_deadline is None or ticket.status in {TicketStatus.RESOLVED, TicketStatus.CLOSED}:
         return "on_track"
 
     current_time = now or utc_now()
@@ -160,6 +155,21 @@ def serialize_ticket_detail(ticket: Ticket) -> TicketDetailResponse:
     )
 
 
+def log_escalation_once(ticket: Ticket, changed_by: str = "system") -> bool:
+    if any(history.action == "escalated" for history in ticket.history):
+        return False
+
+    ticket.history.append(
+        TicketHistory(
+            action="escalated",
+            old_value=None,
+            new_value="breached",
+            changed_by=changed_by,
+        )
+    )
+    return True
+
+
 def ticket_not_found() -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
 
@@ -172,6 +182,7 @@ def list_tickets(
     assigned_team: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    _: Annotated[User, Depends(get_current_user)] = None,
     db: Session = Depends(get_db),
 ) -> TicketListResponse:
     filters: list[Any] = []
@@ -241,11 +252,13 @@ def create_ticket(
 
 
 @router.get("/sla-breaches", response_model=list[SLABreachTicketResponse])
-def list_sla_breaches(db: Session = Depends(get_db)) -> list[SLABreachTicketResponse]:
+def list_sla_breaches(
+    _: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+) -> list[SLABreachTicketResponse]:
     now = utc_now()
     tickets = db.scalars(
-        select(Ticket)
-        .where(
+        select(Ticket).where(
             Ticket.sla_deadline < now,
             Ticket.assigned_agent.is_(None),
             Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED]),
@@ -266,8 +279,37 @@ def list_sla_breaches(db: Session = Depends(get_db)) -> list[SLABreachTicketResp
     return results
 
 
+@router.post("/{ticket_id}/escalate", response_model=TicketDetailResponse)
+def escalate_ticket(
+    ticket_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+) -> TicketDetailResponse:
+    ticket = db.scalar(
+        select(Ticket).options(selectinload(Ticket.history)).where(Ticket.id == ticket_id)
+    )
+    if ticket is None:
+        raise ticket_not_found()
+
+    if ticket_sla_status(ticket) != "breached":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ticket is not currently breached",
+        )
+
+    if log_escalation_once(ticket, changed_by=current_user.email):
+        db.commit()
+        db.refresh(ticket)
+
+    return serialize_ticket_detail(ticket)
+
+
 @router.get("/{ticket_id}", response_model=TicketDetailResponse)
-def get_ticket(ticket_id: UUID, db: Session = Depends(get_db)) -> TicketDetailResponse:
+def get_ticket(
+    ticket_id: UUID,
+    _: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+) -> TicketDetailResponse:
     ticket = db.scalar(
         select(Ticket).options(selectinload(Ticket.history)).where(Ticket.id == ticket_id)
     )
@@ -295,15 +337,16 @@ def update_ticket(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={
                     "detail": "Invalid transition",
-                    "allowed": [enum_value(status_value) for status_value in allowed],
+                    "allowed": [enum_value(s) for s in allowed],
                 },
             )
 
         old_status = enum_value(ticket.status)
         ticket.status = payload.status
+        action = "resolved" if ticket.status == TicketStatus.RESOLVED else "status_changed"
         ticket.history.append(
             TicketHistory(
-                action="status_changed",
+                action=action,
                 old_value=old_status,
                 new_value=enum_value(ticket.status),
                 changed_by=current_user.email,
@@ -315,9 +358,35 @@ def update_ticket(
             ticket.resolved_at = None
 
     if "assigned_agent" in updates:
+        old_agent = ticket.assigned_agent
         ticket.assigned_agent = payload.assigned_agent
+        if old_agent != payload.assigned_agent:
+            ticket.history.append(
+                TicketHistory(
+                    action="assigned",
+                    old_value=old_agent,
+                    new_value=payload.assigned_agent,
+                    changed_by=current_user.email,
+                )
+            )
+
     if "assigned_team" in updates:
+        if payload.assigned_team is None:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": "assigned_team cannot be null"},
+            )
+        old_team = ticket.assigned_team
         ticket.assigned_team = payload.assigned_team
+        if old_team != payload.assigned_team:
+            ticket.history.append(
+                TicketHistory(
+                    action="assigned",
+                    old_value=old_team,
+                    new_value=payload.assigned_team,
+                    changed_by=current_user.email,
+                )
+            )
 
     db.commit()
     db.refresh(ticket)

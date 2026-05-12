@@ -19,7 +19,7 @@ That's it. The backend will wait for PostgreSQL, run the seed script, and start.
 
 **Frontend:** Next.js 14 App Router + TypeScript. Auth state lives in a context provider, all API calls go through a single fetch wrapper that handles token attachment and 401 redirects.
 
-**Routing engine:** Lives in `backend/app/services/routing.py`. Evaluates rules in `priority_order` ascending, first match wins. Supports `equals`, `contains`, and `in` operators, plus compound conditions via optional secondary condition fields. Default catch-all is a seeded rule at priority_order=6, not a hardcode.
+**Routing engine:** Lives in `backend/app/services/routing.py`. Evaluates rules in `priority_order` ascending, first match wins. Supports `equals`, `contains`, and `in` operators, plus compound conditions via optional secondary condition fields. The spec's rule #6 "(no match — default)" is a hardcoded fallback in `routing.py` — it fires when no seeded rule matches and routes to Account Management at P3.
 
 **SLA status** is computed at read time on every ticket response — never stored. `on_track` if assigned, `breached` if past deadline and unassigned, `at_risk` if within 20% of the window.
 
@@ -29,9 +29,8 @@ That's it. The backend will wait for PostgreSQL, run the seed script, and start.
 
 - JWT stored in localStorage (XSS-vulnerable vs HttpOnly cookies — acceptable for this scope)
 - `NEXT_PUBLIC_API_URL` is baked into the frontend image at build time — changing it requires a frontend rebuild
-- `enum_value()` and `ensure_aware()` helpers are duplicated across `tickets.py` and `metrics.py` — should live in a shared `core/utils.py`
 - Next.js 14.2.0 has a known security advisory — would upgrade in production
-- No test coverage on API routes — routing engine unit tests are the focus per spec
+- Tests run against a real PostgreSQL container via `testcontainers` — one container is shared across the session, tables are truncated between tests
 
 ## Writeup
 

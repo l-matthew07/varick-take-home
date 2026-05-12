@@ -1,7 +1,6 @@
 """Idempotent seed data for the support ticket system."""
 
 from datetime import datetime, timedelta, timezone
-import json
 import os
 from pathlib import Path
 import sys
@@ -50,60 +49,43 @@ USERS = [
 ROUTING_RULES = [
     {
         "name": "Security Catch-All",
-        "condition_field": "category",
-        "condition_operator": "equals",
-        "condition_value": "security",
+        "conditions": [{"field": "category", "operator": "equals", "value": "security"}],
         "target_team": "Security",
         "auto_priority": TicketPriority.P1,
         "priority_order": 1,
     },
     {
         "name": "High Priority Billing",
-        "condition_field": "category",
-        "condition_operator": "equals",
-        "condition_value": "billing",
-        "secondary_condition_field": "priority",
-        "secondary_condition_operator": "in",
-        "secondary_condition_value": json.dumps(["P1", "P2"]),
+        "conditions": [
+            {"field": "category", "operator": "equals", "value": "billing"},
+            {"field": "priority", "operator": "in", "value": ["P1", "P2"]},
+        ],
         "target_team": "Billing",
         "priority_order": 2,
     },
     {
         "name": "Low Priority Billing",
-        "condition_field": "category",
-        "condition_operator": "equals",
-        "condition_value": "billing",
-        "secondary_condition_field": "priority",
-        "secondary_condition_operator": "in",
-        "secondary_condition_value": json.dumps(["P3", "P4"]),
+        "conditions": [
+            {"field": "category", "operator": "equals", "value": "billing"},
+            {"field": "priority", "operator": "in", "value": ["P3", "P4"]},
+        ],
         "target_team": "Account Management",
         "priority_order": 3,
     },
     {
         "name": "Engineering",
-        "condition_field": "category",
-        "condition_operator": "equals",
-        "condition_value": "engineering",
+        "conditions": [{"field": "category", "operator": "equals", "value": "engineering"}],
         "target_team": "Engineering",
         "priority_order": 4,
     },
     {
         "name": "Account Management Direct",
-        "condition_field": "category",
-        "condition_operator": "equals",
-        "condition_value": "account_management",
+        "conditions": [{"field": "category", "operator": "equals", "value": "account_management"}],
         "target_team": "Account Management",
         "priority_order": 5,
     },
-    {
-        "name": "Default Catch-All",
-        "condition_field": "category",
-        "condition_operator": "equals",
-        "condition_value": "general",
-        "target_team": "Account Management",
-        "auto_priority": TicketPriority.P3,
-        "priority_order": 6,
-    },
+    # Rule 6 from the spec is "(no match — default)" — it is not a DB rule but the
+    # hardcoded fallback in routing.py that fires when no seeded rule matches.
 ]
 
 
@@ -254,9 +236,6 @@ def seed_routing_rules(session: Session) -> None:
 
 def normalized_rule_data(rule_data: dict[str, Any]) -> dict[str, Any]:
     data = {
-        "secondary_condition_field": None,
-        "secondary_condition_operator": None,
-        "secondary_condition_value": None,
         "auto_priority": None,
     }
     data.update(rule_data)
@@ -281,18 +260,60 @@ def seed_tickets(session: Session, now: datetime) -> None:
             resolved_at=ticket_data.get("resolved_at"),
         )
         session.add(ticket)
+        session.flush()
 
-        ticket, _ = route_ticket(session, ticket)
-        if ticket.status == TicketStatus.CLOSED:
-            ticket.history.append(
-                TicketHistory(
-                    action="status_changed",
-                    old_value=TicketStatus.RESOLVED.value,
-                    new_value=TicketStatus.CLOSED.value,
-                    changed_by="seed",
-                    timestamp=ticket.resolved_at,
-                )
+        ticket.history.append(
+            TicketHistory(
+                action="created",
+                old_value=None,
+                new_value=TicketStatus.OPEN.value,
+                changed_by="seed",
+                timestamp=ticket.created_at,
             )
+        )
+        ticket, _ = route_ticket(session, ticket)
+        append_seed_status_history(ticket)
+
+
+def append_seed_status_history(ticket: Ticket) -> None:
+    if ticket.status == TicketStatus.OPEN:
+        return
+
+    transition_time = ticket.created_at + timedelta(seconds=1)
+    ticket.history.append(
+        TicketHistory(
+            action="status_changed",
+            old_value=TicketStatus.OPEN.value,
+            new_value=TicketStatus.IN_PROGRESS.value,
+            changed_by="seed",
+            timestamp=transition_time,
+        )
+    )
+    if ticket.status == TicketStatus.IN_PROGRESS:
+        return
+
+    resolved_at = ticket.resolved_at or transition_time + timedelta(seconds=1)
+    ticket.history.append(
+        TicketHistory(
+            action="resolved",
+            old_value=TicketStatus.IN_PROGRESS.value,
+            new_value=TicketStatus.RESOLVED.value,
+            changed_by="seed",
+            timestamp=resolved_at,
+        )
+    )
+    if ticket.status == TicketStatus.RESOLVED:
+        return
+
+    ticket.history.append(
+        TicketHistory(
+            action="status_changed",
+            old_value=TicketStatus.RESOLVED.value,
+            new_value=TicketStatus.CLOSED.value,
+            changed_by="seed",
+            timestamp=resolved_at + timedelta(seconds=1),
+        )
+    )
 
 
 if __name__ == "__main__":

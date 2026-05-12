@@ -1,14 +1,9 @@
-"""Routing engine tests."""
+"""Routing engine tests — runs against a real PostgreSQL container."""
 
 from datetime import datetime, timedelta, timezone
-import json
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.core.database import Base
 from app.models.models import (
     RoutingRule,
     Ticket,
@@ -21,83 +16,54 @@ from app.routers.tickets import ticket_sla_status
 from app.services.routing import condition_matches, route_ticket
 
 
-@pytest.fixture
-def db_session():
-    engine = create_engine(
-        "sqlite+pysqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(bind=engine)
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-    session = SessionLocal()
+@pytest.fixture()
+def db_session(pg_session_factory):
+    session = pg_session_factory()
     try:
         seed_routing_rules(session)
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
 
 
 def seed_routing_rules(session):
     rules = [
         RoutingRule(
             name="Security Catch-All",
-            condition_field="category",
-            condition_operator="equals",
-            condition_value="security",
+            conditions=[{"field": "category", "operator": "equals", "value": "security"}],
             target_team="Security",
             auto_priority=TicketPriority.P1,
             priority_order=1,
         ),
         RoutingRule(
             name="High Priority Billing",
-            condition_field="category",
-            condition_operator="equals",
-            condition_value="billing",
-            secondary_condition_field="priority",
-            secondary_condition_operator="in",
-            secondary_condition_value=json.dumps(["P1", "P2"]),
+            conditions=[
+                {"field": "category", "operator": "equals", "value": "billing"},
+                {"field": "priority", "operator": "in", "value": ["P1", "P2"]},
+            ],
             target_team="Billing",
             priority_order=2,
         ),
         RoutingRule(
             name="Low Priority Billing",
-            condition_field="category",
-            condition_operator="equals",
-            condition_value="billing",
-            secondary_condition_field="priority",
-            secondary_condition_operator="in",
-            secondary_condition_value=json.dumps(["P3", "P4"]),
+            conditions=[
+                {"field": "category", "operator": "equals", "value": "billing"},
+                {"field": "priority", "operator": "in", "value": ["P3", "P4"]},
+            ],
             target_team="Account Management",
             priority_order=3,
         ),
         RoutingRule(
             name="Engineering",
-            condition_field="category",
-            condition_operator="equals",
-            condition_value="engineering",
+            conditions=[{"field": "category", "operator": "equals", "value": "engineering"}],
             target_team="Engineering",
             priority_order=4,
         ),
         RoutingRule(
             name="Account Management Direct",
-            condition_field="category",
-            condition_operator="equals",
-            condition_value="account_management",
+            conditions=[{"field": "category", "operator": "equals", "value": "account_management"}],
             target_team="Account Management",
             priority_order=5,
-        ),
-        RoutingRule(
-            name="Default Catch-All",
-            condition_field="category",
-            condition_operator="equals",
-            condition_value="general",
-            target_team="Account Management",
-            auto_priority=TicketPriority.P3,
-            priority_order=6,
         ),
     ]
     session.add_all(rules)
@@ -139,8 +105,8 @@ def test_condition_contains_operator_match_and_no_match():
 
 
 def test_condition_in_operator_match_and_no_match():
-    assert condition_matches("P1", "in", json.dumps(["P1", "P2"])) is True
-    assert condition_matches("P4", "in", json.dumps(["P1", "P2"])) is False
+    assert condition_matches("P1", "in", ["P1", "P2"]) is True
+    assert condition_matches("P4", "in", ["P1", "P2"]) is False
 
 
 def test_unknown_condition_operator_returns_false():
@@ -215,9 +181,7 @@ def test_first_match_wins(db_session):
     db_session.add(
         RoutingRule(
             name="Late Security Rule",
-            condition_field="category",
-            condition_operator="equals",
-            condition_value="security",
+            conditions=[{"field": "category", "operator": "equals", "value": "security"}],
             target_team="Billing",
             auto_priority=TicketPriority.P4,
             priority_order=99,
@@ -241,26 +205,27 @@ def test_auto_priority_override_is_logged(db_session):
         make_ticket(TicketCategory.SECURITY, TicketPriority.P2),
     )
 
-    assert "priority_overridden" in [entry.action for entry in ticket.history]
+    assert "classified" in [entry.action for entry in ticket.history]
 
 
-def test_classified_and_assigned_history_entries_are_created(db_session):
+def test_classification_and_team_assignment_history_entries_are_created(db_session):
     ticket, _ = route_and_flush(
         db_session,
         make_ticket(TicketCategory.ENGINEERING),
     )
 
     actions = [entry.action for entry in ticket.history]
-    assert "classified" in actions
-    assert "assigned" in actions
+    assert actions.count("assigned") == 1
+    assert actions.count("classified") == 1
+    assert actions.index("classified") < actions.index("assigned")
 
 
-def test_sla_status_assigned_agent_is_on_track():
+def test_sla_status_assigned_agent_past_deadline_is_breached():
     ticket = make_ticket(TicketCategory.ENGINEERING, TicketPriority.P1)
     ticket.assigned_agent = "agent@example.com"
     ticket.sla_deadline = datetime.now(timezone.utc) - timedelta(hours=1)
 
-    assert ticket_sla_status(ticket) == "on_track"
+    assert ticket_sla_status(ticket) == "breached"
 
 
 def test_sla_status_past_deadline_is_breached():

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
 from app.core.database import get_db
+from app.core.utils import ensure_aware, enum_value
 from app.models.models import Ticket, TicketPriority, TicketStatus, User
 
 router = APIRouter(tags=["metrics"])
@@ -19,16 +20,6 @@ class MetricsResponse(BaseModel):
     tickets_by_team: dict[str, int]
     sla_breaches: int
     avg_resolution_seconds: float | None
-
-
-def enum_value(value: object) -> str:
-    return value.value if hasattr(value, "value") else str(value)
-
-
-def ensure_aware(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value
 
 
 @router.get("/metrics", response_model=MetricsResponse)

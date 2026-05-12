@@ -1,6 +1,7 @@
 """Password hashing, JWT handling, and current-user dependencies."""
 
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -28,7 +29,11 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(data: dict) -> str:
-    return jwt.encode(data.copy(), settings.secret_key, algorithm=settings.algorithm)
+    claims = data.copy()
+    claims["exp"] = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.access_token_expire_minutes
+    )
+    return jwt.encode(claims, settings.secret_key, algorithm=settings.algorithm)
 
 
 def get_current_user(
