@@ -30,6 +30,10 @@ export interface Ticket {
   history?: TicketHistory[];
 }
 
+export interface SLABreachTicket extends Ticket {
+  sla_elapsed_seconds: number;
+}
+
 export interface User {
   id: string;
   email: string;

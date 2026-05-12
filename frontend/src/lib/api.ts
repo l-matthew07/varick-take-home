@@ -1,6 +1,7 @@
 import type {
   Metrics,
   PaginatedTickets,
+  SLABreachTicket,
   Ticket,
   TicketCreateResponse,
   TicketPriority,
@@ -162,6 +163,6 @@ export async function getMetrics(): Promise<Metrics> {
   return authFetch<Metrics>("/metrics");
 }
 
-export async function getSLABreaches(): Promise<Ticket[]> {
-  return authFetch<Ticket[]>("/tickets/sla-breaches");
+export async function getSLABreaches(): Promise<SLABreachTicket[]> {
+  return authFetch<SLABreachTicket[]>("/tickets/sla-breaches");
 }
