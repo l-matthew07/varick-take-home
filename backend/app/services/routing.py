@@ -113,7 +113,7 @@ def condition_matches(actual: Any, operator: str | None, expected: str | None) -
     if operator == "in":
         return actual_value in parse_list_value(expected)
     if operator == "contains":
-        return actual_value in expected
+        return expected in actual_value
 
     return False
 
