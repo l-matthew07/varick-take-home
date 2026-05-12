@@ -19,11 +19,12 @@ DEFAULT_TEAM = "Account Management"
 DEFAULT_PRIORITY = "P3"
 
 
-def route_ticket(db: Session, ticket: Ticket, changed_by: str = "routing_engine") -> Ticket:
+def route_ticket(db: Session, ticket: Ticket, changed_by: str = "routing_engine") -> tuple[Ticket, str]:
     rules = db.scalars(select(RoutingRule).order_by(RoutingRule.priority_order)).all()
     matched_rule = next((rule for rule in rules if rule_matches_ticket(rule, ticket)), None)
 
     if matched_rule is not None:
+        matched_rule_name = matched_rule.name
         assign_team(ticket, matched_rule.target_team, changed_by)
 
         if matched_rule.auto_priority is not None and ticket.priority != matched_rule.auto_priority:
@@ -38,6 +39,7 @@ def route_ticket(db: Session, ticket: Ticket, changed_by: str = "routing_engine"
                 )
             )
     else:
+        matched_rule_name = "Default Catch-All"
         assign_team(ticket, DEFAULT_TEAM, changed_by)
         if enum_value(ticket.priority) != DEFAULT_PRIORITY:
             old_priority = enum_value(ticket.priority)
@@ -55,7 +57,7 @@ def route_ticket(db: Session, ticket: Ticket, changed_by: str = "routing_engine"
     ticket.created_at = created_at
     ticket.sla_deadline = created_at + timedelta(minutes=SLA_WINDOWS_MINUTES[enum_value(ticket.priority)])
 
-    return ticket
+    return ticket, matched_rule_name
 
 
 def assign_team(ticket: Ticket, target_team: str, changed_by: str) -> None:

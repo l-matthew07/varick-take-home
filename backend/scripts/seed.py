@@ -282,7 +282,7 @@ def seed_tickets(session: Session, now: datetime) -> None:
         )
         session.add(ticket)
 
-        route_ticket(session, ticket)
+        ticket, _ = route_ticket(session, ticket)
         if ticket.status == TicketStatus.CLOSED:
             ticket.history.append(
                 TicketHistory(
